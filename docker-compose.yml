@@ -1,0 +1,17 @@
+services:
+  dozzle-cloudflared:
+    image: ghcr.io/xerzo/dozzle-cloudflared:latest
+    container_name: dozzle-cloudflared
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8099:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/data
+    environment:
+      DOZZLE_LEVEL: ${DOZZLE_LEVEL:-info}
+      DOZZLE_HOSTNAME: ${DOZZLE_HOSTNAME:-DragonX}
+      DOZZLE_ENABLE_ACTIONS: ${DOZZLE_ENABLE_ACTIONS:-false}
+      DOZZLE_ENABLE_SHELL: ${DOZZLE_ENABLE_SHELL:-false}
+      DOZZLE_NO_ANALYTICS: ${DOZZLE_NO_ANALYTICS:-true}
+      CLOUDFLARE_TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
