@@ -1,6 +1,8 @@
 name: Build and publish Docker image
 
 on:
+  schedule:
+    - cron: "0 6 * * 1"
   push:
     branches: [main]
     tags: ["v*"]
@@ -22,9 +24,6 @@ jobs:
         shell: bash
         run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -35,8 +34,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check Dozzle base image digest
+        id: base
+        shell: bash
+        run: |
+          digest="$(docker buildx imagetools inspect --raw amir20/dozzle:main-alpine | sha256sum | awk '{print "sha256:" $1}')"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+          changed=true
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            image="ghcr.io/${{ steps.image.outputs.name }}:latest"
+            current_digest=""
+            if docker pull "$image" >/dev/null 2>&1; then
+              current_digest="$(docker image inspect --format='{{ index .Config.Labels "org.opencontainers.image.base.digest" }}' "$image")"
+            fi
+            if [[ "$digest" == "$current_digest" ]]; then
+              changed=false
+            fi
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        if: steps.base.outputs.changed == 'true'
+        uses: docker/setup-qemu-action@v3
+
       - name: Generate tags and labels
         id: meta
+        if: steps.base.outputs.changed == 'true'
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ steps.image.outputs.name }}
@@ -47,11 +71,14 @@ jobs:
 
       - name: Build and push
         uses: docker/build-push-action@v6
+        if: steps.base.outputs.changed == 'true'
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.base.digest=${{ steps.base.outputs.digest }}
           provenance: false
